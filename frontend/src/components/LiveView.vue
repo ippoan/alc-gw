@@ -19,9 +19,13 @@ async function start() {
     pc = new RTCPeerConnection()
     pc.addTransceiver('video', {direction: 'recvonly'})
     pc.addTransceiver('audio', {direction: 'recvonly'})
+    // answer SDP に msid が無いと ev.streams が空になるため、
+    // 受信トラックを自前の MediaStream に集約する
+    const stream = new MediaStream()
     pc.ontrack = (ev) => {
-      if (video.value && ev.streams[0]) {
-        video.value.srcObject = ev.streams[0]
+      stream.addTrack(ev.track)
+      if (video.value && video.value.srcObject !== stream) {
+        video.value.srcObject = stream
       }
     }
     pc.onconnectionstatechange = () => {
