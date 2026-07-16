@@ -36,3 +36,32 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ippoan/ci-workflows/.github/workflows/auto-merge.yml@main
     secrets: inherit
+
+  # release.yml (tag ref で実行) が restore する wails CLI バイナリキャッシュを
+  # main で warm する。tag ref で保存されたキャッシュは他の tag から参照できない
+  # (GitHub Actions の branch スコープ規則) ため、save は main 側に寄せる
+  # (alc-app-s3 build.yml と同じ判断)。
+  # WAILS_VERSION は release.yml の env と揃えること。
+  warm-wails-cache:
+    name: Warm Wails CLI cache
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    env:
+      WAILS_VERSION: '2.13.0'
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          # checkout していないので go.sum が無い (setup-go の cache は無効化)
+          cache: false
+
+      - name: Cache Wails CLI
+        id: cache-wails
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/wails.exe
+          key: wails-cli-${{ env.WAILS_VERSION }}-${{ runner.os }}
+
+      - name: Install Wails CLI
+        if: steps.cache-wails.outputs.cache-hit != 'true'
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v${{ env.WAILS_VERSION }}

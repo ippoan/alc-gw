@@ -7,6 +7,11 @@ on:
 permissions:
   contents: write
 
+env:
+  # cache key と install コマンドの二重管理を避けるため一箇所にまとめる
+  # (alc-app-s3 の ESPFLASH_VERSION と同パターン)
+  WAILS_VERSION: '2.13.0'
+
 jobs:
   build:
     runs-on: windows-latest
@@ -23,8 +28,19 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # wails CLI は go install だと毎回フルコンパイル (~1 分)。バイナリを
+      # キャッシュして 2 回目以降は数秒にする。バージョンを上げる時は
+      # env.WAILS_VERSION を変えれば key ごと invalidate される
+      - name: Cache Wails CLI
+        id: cache-wails
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/wails.exe
+          key: wails-cli-${{ env.WAILS_VERSION }}-${{ runner.os }}
+
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+        if: steps.cache-wails.outputs.cache-hit != 'true'
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v${{ env.WAILS_VERSION }}
 
       # win25 イメージに makensis は無い (wails は警告だけ出して素通りする)
       - name: Install NSIS
