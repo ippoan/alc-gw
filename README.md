@@ -104,12 +104,14 @@ irm http://127.0.0.1:11984/api/hub/inject -Method Post -ContentType application/
 1. Actions タブ → **Tag Release** → Run workflow (bump は通常 patch) で
    semver タグが自動採番・push される (`gh workflow run tag-release.yml` でも可)
 2. `v*` タグの push で release.yml が連鎖発火し、`wails build -nsis` で
-   `alc-gw-amd64-installer.exe` を作り **staged Release (latest にしない)** として
+   `alc-gw-amd64-installer.exe` を作り **latest にしない Release (= 配信保留)** として
    添付、[ci-dashboard の /release-wave](https://ci-dashboard.ippoan.org/release-wave)
-   の Pending releases に報告する
-3. Pending releases の preview リンク (Release ページ) からインストーラを手動検証し、
-   **Flip** で latest に昇格 → インストール済み GW の自動更新 (起動 1 分後 or
-   トレイの「更新を確認」、releases/latest 監視) が新版を取り込む
+   の Pending releases に報告する。staging 環境があるわけではない —
+   自動更新が releases/latest しか見ないことを利用した、単なる配信ゲート
+3. 必要なら Pending releases のリンク (= ただの Release ページ) からインストーラを
+   手動インストールして検証し、**Flip** で latest に昇格 → インストール済み GW の
+   自動更新 (起動 1 分後 or トレイの「更新を確認」) が新版を取り込む。
+   Flip するまでフリートは一切更新されない = 営業時間を避ける等、配信タイミングを選べる
 4. ロールバックは `gh release edit <旧タグ> --latest`
 
 バージョンは `-ldflags -X main.version=<tag>` で埋め込まれ、自動更新の比較に使われる。
