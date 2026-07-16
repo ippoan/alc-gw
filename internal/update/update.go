@@ -69,9 +69,14 @@ func Check(currentVersion string) (*Release, error) {
 	return nil, errors.New("update: installer asset not found in " + body.TagName)
 }
 
-// Apply はインストーラを DL し、3 秒後にサイレント実行→アプリ再起動する
-// 子プロセスを切り離して起動する。呼び出し側はこの後すみやかに
-// アプリを終了させること。
+// Apply はインストーラを DL し、「本体の終了を待つ → サイレント実行 →
+// アプリ再起動」を行う子プロセスを切り離して起動する。呼び出し側はこの後
+// すみやかにアプリを終了させること。
+//
+// 旧実装の `cmd /C timeout /t 3 ...` は使わない: timeout.exe はコンソールが
+// 無いと "Input redirection is not supported" で即終了し、待ち 0 秒で
+// インストーラが exe ロックに衝突 → NSIS がエラー音を出して更新失敗して
+// いた (v0.1.5 実機)。固定秒でなく Wait-Process で自 PID の終了を確実に待つ。
 func Apply(r *Release) error {
 	installer := filepath.Join(os.TempDir(), "alc-gw-"+r.Tag+"-installer.exe")
 	if err := download(r.InstallerURL, installer); err != nil {
@@ -83,12 +88,15 @@ func Apply(r *Release) error {
 		return err
 	}
 
-	// timeout: アプリ終了 (exe のロック解放) を待つ猶予
 	script := fmt.Sprintf(
-		`timeout /t 3 /nobreak >nul & "%s" /S & start "" "%s"`,
-		installer, exe)
-	cmd := exec.Command("cmd", "/C", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000008} // DETACHED_PROCESS
+		`Wait-Process -Id %d -Timeout 30 -ErrorAction SilentlyContinue; `+
+			`Start-Process -FilePath '%s' -ArgumentList '/S' -Wait; `+
+			`Start-Process -FilePath '%s'`,
+		os.Getpid(), installer, exe)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	// CREATE_NO_WINDOW: 不可視のコンソールを持たせる (コンソール完全無しの
+	// DETACHED_PROCESS だとコンソールアプリの挙動が壊れる — timeout の教訓)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	return cmd.Start()
 }
 
