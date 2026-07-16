@@ -65,6 +65,26 @@ function stop() {
   if (status.value !== 'error') status.value = 'idle'
 }
 
+// --- パンチルト (ONVIF PTZ) ---
+// 押している間 ContinuousMove、離すと Stop
+const PTZ_SPEED = 0.5
+
+async function ptzMove(x: number, y: number) {
+  try {
+    await fetch('/api/ptz', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({x, y}),
+    })
+  } catch {
+    // 移動失敗は致命ではないので黙殺 (次の操作で回復を試みる)
+  }
+}
+
+function ptzStop() {
+  void ptzMove(0, 0)
+}
+
 function waitIceGathering(pc: RTCPeerConnection): Promise<void> {
   if (pc.iceGatheringState === 'complete') return Promise.resolve()
   return new Promise((resolve) => {
@@ -83,7 +103,19 @@ onUnmounted(stop)
 
 <template>
   <div class="live-view">
-    <video ref="video" autoplay muted playsinline></video>
+    <div class="video-wrap">
+      <video ref="video" autoplay muted playsinline></video>
+      <div class="ptz-pad" v-show="status === 'connected'">
+        <button class="ptz up" aria-label="上"
+                @pointerdown="ptzMove(0, PTZ_SPEED)" @pointerup="ptzStop" @pointerleave="ptzStop" @pointercancel="ptzStop">▲</button>
+        <button class="ptz left" aria-label="左"
+                @pointerdown="ptzMove(-PTZ_SPEED, 0)" @pointerup="ptzStop" @pointerleave="ptzStop" @pointercancel="ptzStop">◀</button>
+        <button class="ptz right" aria-label="右"
+                @pointerdown="ptzMove(PTZ_SPEED, 0)" @pointerup="ptzStop" @pointerleave="ptzStop" @pointercancel="ptzStop">▶</button>
+        <button class="ptz down" aria-label="下"
+                @pointerdown="ptzMove(0, -PTZ_SPEED)" @pointerup="ptzStop" @pointerleave="ptzStop" @pointercancel="ptzStop">▼</button>
+      </div>
+    </div>
     <div class="controls">
       <button :disabled="status === 'connecting'" @click="start">
         {{ status === 'connected' ? '再接続' : '映像開始' }}
@@ -109,12 +141,53 @@ onUnmounted(stop)
   padding: 16px;
 }
 
+.video-wrap {
+  position: relative;
+}
+
 video {
   width: 100%;
   max-height: 70vh;
   background: #000;
   border-radius: 8px;
+  display: block;
 }
+
+/* タッチ画面での押しっぱなし操作を想定した方向パッド */
+.ptz-pad {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+  gap: 4px;
+}
+
+.ptz {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  font-size: 18px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.75);
+  color: #fff;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.ptz:active {
+  background: rgba(37, 99, 235, 0.9);
+}
+
+.ptz.up { grid-area: up; }
+.ptz.left { grid-area: left; }
+.ptz.right { grid-area: right; }
+.ptz.down { grid-area: down; }
 
 .controls {
   display: flex;

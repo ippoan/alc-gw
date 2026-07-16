@@ -11,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 
+	"alc-gw/internal/ptz"
 	"alc-gw/internal/stream"
 )
 
@@ -33,6 +34,9 @@ func main() {
 	mux.Handle("/api/whep", streamServer)
 	mux.HandleFunc("/api/stream/status", streamServer.Status)
 	mux.HandleFunc("/debug", stream.DebugPage)
+
+	// パンチルト (ONVIF PTZ)。RTSP と同じカメラアカウントを使う
+	mux.Handle("/api/ptz", ptz.FromRTSP(os.Getenv("ALC_GW_RTSP_URL")))
 
 	go func() {
 		if err := http.ListenAndServe(debugAddr, mux); err != nil {
