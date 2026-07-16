@@ -99,15 +99,20 @@ irm http://127.0.0.1:11984/api/hub/inject -Method Post -ContentType application/
 - 通常はトレイメニューの「設定」から (→ `%LOCALAPPDATA%\alc-gw\config.json`)
 - 環境変数 `ALC_GW_RTSP_URL` を設定すると config.json より優先 (開発用)
 
-## リリース
+## リリース (Release Wave)
 
-Actions タブ → **Tag Release** → Run workflow (bump は通常 patch) で
-semver タグが自動採番・push される (`gh workflow run tag-release.yml` でも可)。
-`v*` タグの push で release.yml が連鎖発火し、GitHub Actions (windows-latest) が
-`wails build -nsis` で `alc-gw-amd64-installer.exe` を作り Release に添付する。
+1. Actions タブ → **Tag Release** → Run workflow (bump は通常 patch) で
+   semver タグが自動採番・push される (`gh workflow run tag-release.yml` でも可)
+2. `v*` タグの push で release.yml が連鎖発火し、`wails build -nsis` で
+   `alc-gw-amd64-installer.exe` を作り **staged Release (latest にしない)** として
+   添付、[ci-dashboard の /release-wave](https://ci-dashboard.ippoan.org/release-wave)
+   の Pending releases に報告する
+3. Pending releases の preview リンク (Release ページ) からインストーラを手動検証し、
+   **Flip** で latest に昇格 → インストール済み GW の自動更新 (起動 1 分後 or
+   トレイの「更新を確認」、releases/latest 監視) が新版を取り込む
+4. ロールバックは `gh release edit <旧タグ> --latest`
+
 バージョンは `-ldflags -X main.version=<tag>` で埋め込まれ、自動更新の比較に使われる。
-インストール済みの GW は起動 1 分後 (またはトレイの「更新を確認」) に
-Releases latest を見て自動更新する。
 
 ## 開発
 

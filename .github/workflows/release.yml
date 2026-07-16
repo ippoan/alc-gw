@@ -42,8 +42,43 @@ jobs:
             exit 1
           }
 
-      - name: Create release
+      # release-wave (ippoan/ci-workflows#179): Release は latest にしない staged
+      # 状態で作る。インストール済み GW の自動更新は releases/latest を見るため、
+      # この時点ではフリートに配信されない。ci-dashboard /release-wave の Flip
+      # (→ release-wave.yml → gh release edit --latest) で配信開始する。
+      - name: Create release (staged, not latest)
         uses: softprops/action-gh-release@v2
         with:
           files: build/bin/alc-gw-amd64-installer.exe
           generate_release_notes: true
+          make_latest: false
+
+      # staged Release を ci-dashboard の Pending releases に報告する。
+      # /release-wave に Flip ボタン付きで並び、preview_url (Release ページ) から
+      # インストーラを手動検証できる。version_id は CF version UUID の枠だが
+      # github-release platform では tag を identity に使う (UUID 強制は
+      # ippoan/ci-dashboard#237 で撤廃済み)。
+      # secret 未設定 (org secret の対象外) は警告して skip — release 自体は成立
+      # させ、手動 `gh release edit <tag> --latest` で配信できる。
+      - name: Report pending release (release-wave)
+        shell: pwsh
+        env:
+          WEBHOOK_SECRET: ${{ secrets.RELEASE_WAVE_WEBHOOK_SECRET }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if (-not $env:WEBHOOK_SECRET) {
+            Write-Host "::warning::RELEASE_WAVE_WEBHOOK_SECRET 未設定 — pending-release 報告を skip (手動 flip: gh release edit $env:TAG --latest)"
+            exit 0
+          }
+          $body = @{
+            repo        = $env:REPO
+            version_id  = $env:TAG
+            tag         = $env:TAG
+            preview_url = "https://github.com/$($env:REPO)/releases/tag/$($env:TAG)"
+          } | ConvertTo-Json -Compress
+          Invoke-RestMethod -Method Post `
+            -Uri "https://ci-dashboard.ippoan.org/webhooks/release-wave/pending-release" `
+            -Headers @{ "X-Release-Wave-Webhook-Secret" = $env:WEBHOOK_SECRET } `
+            -ContentType "application/json" -Body $body
+          Write-Host "reported pending release $($env:TAG) to ci-dashboard"
