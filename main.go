@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	stdruntime "runtime"
 	"sync/atomic"
 	"time"
 
@@ -209,7 +210,14 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
-			go systray.Run(trayReady(ctx, app), nil)
+			// systray の Win32 メッセージキューは OS スレッド単位。ライブラリの
+			// init() の LockOSThread は main goroutine にしか効かないため、
+			// 別 goroutine から呼ぶ場合はここで固定しないと、スレッド移動後に
+			// トレイのクリックイベントを取りこぼす (右クリックが時々効かない)
+			go func() {
+				stdruntime.LockOSThread()
+				systray.Run(trayReady(ctx, app), nil)
+			}()
 			go autoUpdate(ctx)
 		},
 		// 閉じるボタン = 最小化 (常時表示・終了はトレイの「終了」から)。
