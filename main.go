@@ -21,6 +21,7 @@ import (
 
 	"alc-gw/internal/blebridge"
 	"alc-gw/internal/config"
+	"alc-gw/internal/discovery"
 	"alc-gw/internal/fc1200bridge"
 	"alc-gw/internal/hub"
 	"alc-gw/internal/nfcbridge"
@@ -57,6 +58,14 @@ const debugAddr = "127.0.0.1:11984"
 
 // hubAddr は CoreS3 (alc-app-s3) を受ける WS ハブ (LAN 内、alc-app#120)
 const hubAddr = ":9000"
+
+// hubPort / beaconPort は CoreS3 の GW 自動発見 (internal/discovery) 用。
+// GW が UDP beaconPort へ自分の WS ハブ URL をブロードキャストし、CoreS3 は
+// `GW URL` 未設定ならそれに自動接続する
+const (
+	hubPort    = 9000
+	beaconPort = 9001
+)
 
 // 点呼UI (alc-app) が接続するブリッジ WS 群。ポートは Android タブレット時代の
 // ブリッジ互換 (useNfcWebSocket / useBleGateway / useFc1200Serial の固定値)。
@@ -126,6 +135,8 @@ func main() {
 	listen("ble-bridge", bleBridge, bleBridgeAddr)
 	listen("fc1200-bridge", fcBridge, fc1200BridgeAddr)
 	listen("hub", hubServer, hubAddr)
+	// CoreS3 の GW 自動発見: WS ハブ URL を UDP ブロードキャストし続ける
+	discovery.Start(beaconPort, hubPort, version)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/whep", streamServer)
