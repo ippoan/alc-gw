@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/AlexxIT/go2rtc v1.9.14
+	github.com/energye/systray v1.0.3
 	github.com/pion/webrtc/v4 v4.2.3
 	github.com/wailsapp/wails/v2 v2.13.0
 )

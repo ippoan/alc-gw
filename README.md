@@ -26,13 +26,24 @@ Windows GW 常駐アプリ — Wails (Go) + go2rtc ライブラリ組込み。
   - go2rtc の `internal/` は import 不可のため `pkg/` プリミティブのみ使用。
     pkg API は semver 保証がないので、バージョン追従の影響は `internal/stream` に閉じ込める
 - WHEP エンドポイント `/api/whep` (Wails AssetServer の Handler に同居 = 同一オリジン、CORS 不要)
-- LAN 内完結: STUN/TURN なし (host candidate のみ)
+- LAN 内完結: ICE 候補は loopback + RFC1918 UDP4 のみ・固定ポート :8555 (STUN/TURN なし)
+- パンチルト (`internal/ptz`): ONVIF PTZ ContinuousMove/Stop。`POST /api/ptz {"x":-1..1,"y":-1..1}`
+- システムトレイ常駐 (energye/systray): 右クリックメニューに 表示/設定/更新を確認/終了。
+  ウィンドウの閉じるボタンは最小化 (終了はトレイから)
+- 設定画面 (トレイ → 設定): RTSP URL を `%LOCALAPPDATA%\alc-gw\config.json` に保存、即時反映
+- 自動更新 (`internal/update`): GitHub Releases の latest を起動 1 分後に確認、
+  新しければ NSIS インストーラをサイレント適用して再起動。トレイから手動確認も可
 
 ## 設定
 
-| 環境変数 | 説明 |
-|---|---|
-| `ALC_GW_RTSP_URL` | カメラの RTSP URL (例: `rtsp://user:pass@192.168.x.x:554/stream1`) |
+- 通常はトレイメニューの「設定」から (→ `%LOCALAPPDATA%\alc-gw\config.json`)
+- 環境変数 `ALC_GW_RTSP_URL` を設定すると config.json より優先 (開発用)
+
+## リリース
+
+`v*` タグを push すると GitHub Actions (windows-latest) が
+`wails build -nsis` で `alc-gw-amd64-installer.exe` を作り Release に添付する。
+バージョンは `-ldflags -X main.version=<tag>` で埋め込まれ、自動更新の比較に使われる。
 
 ## 開発
 

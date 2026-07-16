@@ -1,11 +1,13 @@
 <script lang="ts" setup>
 import LiveView from './components/LiveView.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 </script>
 
 <template>
   <main>
     <h1>alc-gw</h1>
     <LiveView/>
+    <SettingsDialog/>
   </main>
 </template>
 

@@ -76,14 +76,32 @@ func candidateIPs() []string {
 	return ips
 }
 
+// SetSource はカメラの RTSP URL を差し替え、既存の producer を破棄する
+// (次の WHEP リクエストで新 URL に再接続)。
+func (s *Server) SetSource(rtspURL string) {
+	s.mu.Lock()
+	prod := s.prod
+	s.rtspURL = rtspURL
+	s.prod = nil
+	s.started = false
+	s.mu.Unlock()
+
+	if prod != nil {
+		_ = prod.Stop()
+	}
+}
+
 // ServeHTTP は WHEP 互換の SDP 交換 (POST application/sdp offer → 201 answer)。
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if s.rtspURL == "" {
-		http.Error(w, "RTSP source not configured (ALC_GW_RTSP_URL)", http.StatusServiceUnavailable)
+	s.mu.Lock()
+	configured := s.rtspURL != ""
+	s.mu.Unlock()
+	if !configured {
+		http.Error(w, "RTSP source not configured", http.StatusServiceUnavailable)
 		return
 	}
 

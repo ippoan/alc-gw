@@ -30,17 +30,27 @@ type Controller struct {
 // FromRTSP は RTSP URL (rtsp://user:pass@host:554/stream1) から
 // 認証情報とホストを引き継いで ONVIF 接続先を導出する。
 func FromRTSP(rtspURL string) *Controller {
+	c := &Controller{}
+	c.SetSource(rtspURL)
+	return c
+}
+
+// SetSource は RTSP URL から ONVIF 接続先を再導出し、既存接続を破棄する。
+func (c *Controller) SetSource(rtspURL string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reset()
+	c.onvifURL = ""
+
 	u, err := url.Parse(rtspURL)
 	if err != nil || u.Hostname() == "" {
-		return &Controller{}
+		return
 	}
 	var userinfo string
 	if u.User != nil {
 		userinfo = u.User.String() + "@"
 	}
-	return &Controller{
-		onvifURL: fmt.Sprintf("http://%s%s:%s/onvif/device_service", userinfo, u.Hostname(), onvifPort),
-	}
+	c.onvifURL = fmt.Sprintf("http://%s%s:%s/onvif/device_service", userinfo, u.Hostname(), onvifPort)
 }
 
 // init はカメラへの ONVIF 接続を lazy に確立する (呼び出し側で mu を保持)。
@@ -49,7 +59,7 @@ func (c *Controller) initLocked() error {
 		return nil
 	}
 	if c.onvifURL == "" {
-		return errors.New("ptz: not configured (ALC_GW_RTSP_URL)")
+		return errors.New("ptz: camera not configured")
 	}
 
 	client, err := onvif.NewClient(c.onvifURL)
