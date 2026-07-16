@@ -190,6 +190,18 @@ func main() {
 		Title:  "alc-gw",
 		Width:  1024,
 		Height: 768,
+		// 二重起動防止: 更新の入れ違い等で 2 個目が起動されても、既存
+		// インスタンスのウィンドウを前面化して自分は即終了する (旧プロセスの
+		// ゾンビトレイアイコンが残る事故の再発防止)
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "alc-gw-1c1f7a58-9b1e-4a53-8a44-4b2f7f6f2a10",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx != nil {
+					runtime.WindowUnminimise(app.ctx)
+					runtime.WindowShow(app.ctx)
+				}
+			},
+		},
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: mux,
