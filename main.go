@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/energye/systray"
@@ -36,6 +37,19 @@ var trayIcon []byte
 
 // version はリリースビルド時に -ldflags "-X main.version=v0.1.0" で注入される
 var version = "dev"
+
+// quitting は「本当に終了する」意思表示。runtime.Quit は内部で OnBeforeClose を
+// 呼び、true (= キャンセル) が返ると何もしない (wails v2 Frontend.Quit)。
+// OnBeforeClose が常に true (閉じる = 最小化) の本アプリでは、このフラグ無しだと
+// トレイの「終了」も自動更新後の再起動も握り潰される。
+var quitting atomic.Bool
+
+// quitApp はトレイ掃除 → 本終了。OnBeforeClose の最小化ガードを quitting で抜ける
+func quitApp(ctx context.Context) {
+	quitting.Store(true)
+	systray.Quit()
+	runtime.Quit(ctx)
+}
 
 // debugAddr はデバッグ・外部連携用の HTTP 待ち受け (Wails の AssetServer は
 // WebView 内からしか届かないため、疎通確認用に localhost でも同じ mux を公開する)
@@ -175,8 +189,13 @@ func main() {
 			go systray.Run(trayReady(ctx, app), nil)
 			go autoUpdate(ctx)
 		},
-		// 閉じるボタン = 最小化 (常時表示・終了はトレイの「終了」から)
+		// 閉じるボタン = 最小化 (常時表示・終了はトレイの「終了」から)。
+		// quitting 時は素通し — runtime.Quit もここを通るため、ガードしないと
+		// トレイの終了・更新後の再起動が最小化に化ける
 		OnBeforeClose: func(ctx context.Context) bool {
+			if quitting.Load() {
+				return false
+			}
 			runtime.WindowMinimise(ctx)
 			return true
 		},
@@ -236,8 +255,7 @@ func trayReady(ctx context.Context, app *App) func() {
 
 		mQuit := systray.AddMenuItem("終了", "アプリを終了する")
 		mQuit.Click(func() {
-			systray.Quit()
-			runtime.Quit(ctx)
+			quitApp(ctx)
 		})
 	}
 }
@@ -258,7 +276,7 @@ func autoUpdate(ctx context.Context) {
 		log.Printf("update: apply failed: %v", err)
 		return
 	}
-	runtime.Quit(ctx)
+	quitApp(ctx)
 }
 
 // checkUpdateInteractive はトレイメニューからの手動更新確認。
@@ -290,7 +308,7 @@ func checkUpdateInteractive(ctx context.Context) {
 		})
 		return
 	}
-	runtime.Quit(ctx)
+	quitApp(ctx)
 }
 
 // cors は同一マシン上のブラウザ/WebView (https://alc.ippoan.org 等) から

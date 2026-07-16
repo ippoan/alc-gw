@@ -4,8 +4,6 @@ import (
 	"context"
 	"log"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"alc-gw/internal/config"
 	"alc-gw/internal/ptz"
 	"alc-gw/internal/stream"
@@ -66,7 +64,7 @@ func (a *App) CheckUpdate() (string, error) {
 		return "", err
 	}
 	go func() {
-		runtime.Quit(a.ctx)
+		quitApp(a.ctx)
 	}()
 	return rel.Tag, nil
 }
