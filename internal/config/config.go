@@ -22,7 +22,8 @@ func Dir() string {
 	return filepath.Join(base, "alc-gw")
 }
 
-func path() string {
+// Path は設定ファイルのフルパスを返す。
+func Path() string {
 	return filepath.Join(Dir(), "config.json")
 }
 
@@ -30,7 +31,7 @@ func path() string {
 // 環境変数 ALC_GW_RTSP_URL があれば RTSPURL を上書きする。
 func Load() Config {
 	var c Config
-	if b, err := os.ReadFile(path()); err == nil {
+	if b, err := os.ReadFile(Path()); err == nil {
 		_ = json.Unmarshal(b, &c)
 	}
 	if env := os.Getenv("ALC_GW_RTSP_URL"); env != "" {
@@ -48,5 +49,5 @@ func Save(c Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path(), b, 0o644)
+	return os.WriteFile(Path(), b, 0o644)
 }

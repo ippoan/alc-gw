@@ -1,25 +1,14 @@
 <script lang="ts" setup>
-import LiveView from './components/LiveView.vue'
-import SettingsDialog from './components/SettingsDialog.vue'
+import {onMounted} from 'vue'
+
+// WebView のデフォルト表示は点呼UI (alc.ippoan.org)
+const HOME_URL = 'https://alc.ippoan.org/'
+
+onMounted(() => {
+  location.replace(HOME_URL)
+})
 </script>
 
 <template>
-  <main>
-    <h1>alc-gw</h1>
-    <LiveView/>
-    <SettingsDialog/>
-  </main>
+  <main></main>
 </template>
-
-<style>
-main {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
-h1 {
-  font-size: 20px;
-  margin-bottom: 8px;
-}
-</style>

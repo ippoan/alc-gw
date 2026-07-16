@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -51,7 +52,10 @@ func main() {
 	mux.Handle("/api/ptz", ptzCtl)
 
 	go func() {
-		if err := http.ListenAndServe(debugAddr, mux); err != nil {
+		// 点呼UI (https://alc.ippoan.org 等) からローカル API を呼べるよう
+		// CORS + Private Network Access を許可 (loopback bind なので
+		// 同一マシンのブラウザ/WebView からしか届かない)
+		if err := http.ListenAndServe(debugAddr, cors(mux)); err != nil {
 			log.Printf("debug listener: %v", err)
 		}
 	}()
@@ -105,10 +109,23 @@ func trayReady(ctx context.Context, app *App) func() {
 		mShow := systray.AddMenuItem("表示", "ウィンドウを前面に出す")
 		mShow.Click(show)
 
-		mSettings := systray.AddMenuItem("設定", "カメラ等の設定")
+		// WebView は点呼UI (外部サイト) を表示しているため、設定は
+		// config.json をメモ帳で直接編集してもらう。閉じたら即反映
+		mSettings := systray.AddMenuItem("設定", "config.json を編集")
 		mSettings.Click(func() {
-			show()
-			runtime.EventsEmit(ctx, "open-settings")
+			go func() {
+				cfg := config.Load()
+				_ = config.Save(cfg) // 未作成ならひな形を書き出す
+				cmd := exec.Command("notepad", config.Path())
+				if err := cmd.Run(); err != nil {
+					log.Printf("config: editor: %v", err)
+					return
+				}
+				cfg = config.Load()
+				app.stream.SetSource(cfg.RTSPURL)
+				app.ptz.SetSource(cfg.RTSPURL)
+				log.Printf("config: reloaded after edit")
+			}()
 		})
 
 		mUpdate := systray.AddMenuItem("更新を確認", "新しいバージョンを確認")
@@ -175,6 +192,23 @@ func checkUpdateInteractive(ctx context.Context) {
 		return
 	}
 	runtime.Quit(ctx)
+}
+
+// cors は同一マシン上のブラウザ/WebView (https://alc.ippoan.org 等) から
+// ローカル API への呼び出しを許可する。
+func cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		// Chrome の Private Network Access preflight 対応
+		w.Header().Set("Access-Control-Allow-Private-Network", "true")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // setupLogFile は log 出力を %LOCALAPPDATA%\alc-gw\gw.log へ送る
