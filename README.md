@@ -101,9 +101,13 @@ irm http://127.0.0.1:11984/api/hub/inject -Method Post -ContentType application/
 
 ## リリース
 
-`v*` タグを push すると GitHub Actions (windows-latest) が
+Actions タブ → **Tag Release** → Run workflow (bump は通常 patch) で
+semver タグが自動採番・push される (`gh workflow run tag-release.yml` でも可)。
+`v*` タグの push で release.yml が連鎖発火し、GitHub Actions (windows-latest) が
 `wails build -nsis` で `alc-gw-amd64-installer.exe` を作り Release に添付する。
 バージョンは `-ldflags -X main.version=<tag>` で埋め込まれ、自動更新の比較に使われる。
+インストール済みの GW は起動 1 分後 (またはトレイの「更新を確認」) に
+Releases latest を見て自動更新する。
 
 ## 開発
 
