@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"alc-gw/internal/config"
+	"alc-gw/internal/hub"
+	"alc-gw/internal/nfcbridge"
 	"alc-gw/internal/ptz"
 	"alc-gw/internal/stream"
 	"alc-gw/internal/update"
@@ -35,6 +38,13 @@ var version = "dev"
 // WebView 内からしか届かないため、疎通確認用に localhost でも同じ mux を公開する)
 const debugAddr = "127.0.0.1:11984"
 
+// hubAddr は CoreS3 (alc-app-s3) を受ける WS ハブ (LAN 内、alc-app#120)
+const hubAddr = ":9000"
+
+// nfcBridgeAddr は rust-nfc-bridge 互換 WS。WebView 内の点呼UI が接続する。
+// 本物の rust-nfc-bridge が動いていればポートが取れず、そちらに譲る
+const nfcBridgeAddr = "127.0.0.1:9876"
+
 func main() {
 	setupLogFile()
 
@@ -45,11 +55,42 @@ func main() {
 	streamServer := stream.NewServer(cfg.RTSPURL)
 	ptzCtl := ptz.FromRTSP(cfg.RTSPURL)
 
+	// CoreS3 の NFC 読取 → nfc-bridge 互換 WS (→ 点呼UI の NfcStatus) へ中継
+	nfcBridge := nfcbridge.New(version)
+	hubServer := hub.New(nfcBridge.SetReaders, nfcBridge.InjectRead)
+	go func() {
+		if err := nfcBridge.ListenAndServe(nfcBridgeAddr); err != nil {
+			log.Printf("nfc-bridge: listen: %v (rust-nfc-bridge 稼働中ならそちらを使う)", err)
+		}
+	}()
+	go func() {
+		if err := hubServer.ListenAndServe(hubAddr); err != nil {
+			log.Printf("hub: listen: %v", err)
+		}
+	}()
+
 	mux := http.NewServeMux()
 	mux.Handle("/api/whep", streamServer)
 	mux.HandleFunc("/api/stream/status", streamServer.Status)
 	mux.HandleFunc("/debug", stream.DebugPage)
 	mux.Handle("/api/ptz", ptzCtl)
+	mux.HandleFunc("/api/hub/status", hubServer.Status)
+	// テスト用の読取注入 (CoreS3 firmware 未実装でも E2E 確認できる)
+	mux.HandleFunc("/api/nfc/read", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST のみ", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			CardID string `json:"card_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.CardID == "" {
+			http.Error(w, `{"card_id":"..."} が必要です`, http.StatusBadRequest)
+			return
+		}
+		nfcBridge.InjectRead(body.CardID)
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	go func() {
 		// 点呼UI (https://alc.ippoan.org 等) からローカル API を呼べるよう

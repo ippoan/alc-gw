@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      # wails build なしで Go 部分だけ検証する (frontend/dist は embed 対象の
+      # ため素の go build が通らない — パッケージ単位でテストと vet を回す)
+      - name: Test
+        run: go test ./internal/... -count=1
+
+      - name: Vet
+        run: go vet ./internal/...
