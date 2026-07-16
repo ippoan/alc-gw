@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +18,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"alc-gw/internal/blebridge"
 	"alc-gw/internal/config"
+	"alc-gw/internal/fc1200bridge"
+	"alc-gw/internal/hub"
+	"alc-gw/internal/nfcbridge"
 	"alc-gw/internal/ptz"
 	"alc-gw/internal/stream"
 	"alc-gw/internal/update"
@@ -35,8 +41,29 @@ var version = "dev"
 // WebView 内からしか届かないため、疎通確認用に localhost でも同じ mux を公開する)
 const debugAddr = "127.0.0.1:11984"
 
+// hubAddr は CoreS3 (alc-app-s3) を受ける WS ハブ (LAN 内、alc-app#120)
+const hubAddr = ":9000"
+
+// 点呼UI (alc-app) が接続するブリッジ WS 群。ポートは Android タブレット時代の
+// ブリッジ互換 (useNfcWebSocket / useBleGateway / useFc1200Serial の固定値)。
+// 同名の本物のブリッジが動いていればポートが取れず、そちらに譲る
+const (
+	nfcBridgeAddr    = "127.0.0.1:9876"
+	bleBridgeAddr    = "127.0.0.1:9877"
+	fc1200BridgeAddr = "127.0.0.1:9878"
+)
+
 func main() {
 	setupLogFile()
+
+	// WebView2 (Chromium) は WebSerial 対応のため、点呼UI の useBleGateway /
+	// useFc1200Serial が WS ブリッジ (9877/9878) にフォールバックしない。
+	// GW にシリアル機器は直結しない構成 (FC-1200 も BLE GW も CoreS3 側) なので
+	// WebView では WebSerial を無効化して WS 経路に落とす。
+	// (Wails v2 に browser args のオプションが無いため WebView2 loader の環境変数で渡す)
+	if os.Getenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") == "" {
+		_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-blink-features=Serial")
+	}
 
 	cfg := config.Load()
 
@@ -45,11 +72,83 @@ func main() {
 	streamServer := stream.NewServer(cfg.RTSPURL)
 	ptzCtl := ptz.FromRTSP(cfg.RTSPURL)
 
+	// CoreS3 の NFC 読取・体温・血圧・FC-1200 を、点呼UI が話せる
+	// タブレット時代のブリッジ互換 WS (9876/9877/9878) へ中継する。
+	// GW → CoreS3 方向のコマンド (BLE 再スキャン、FC-1200 操作) は hub 経由。
+	nfcBridge := nfcbridge.New(version)
+	var hubServer *hub.Hub
+	bleBridge := blebridge.New(version, func(cmd string) { hubServer.SendCommand("ble_command", cmd) })
+	fcBridge := fc1200bridge.New(func(cmd string) { hubServer.SendCommand("fc1200_command", cmd) })
+	hubServer = hub.New(hub.Callbacks{
+		Devices: func(devices []string) {
+			nfcBridge.SetReaders(devices)
+			if len(devices) == 0 {
+				// CoreS3 が全て切断 → BLE 機器の接続状態もリセット
+				bleBridge.SetDeviceState(false, false)
+			}
+		},
+		NfcRead: nfcBridge.InjectRead,
+		Measurement: func(kind string, payload []byte) {
+			switch kind {
+			case "temperature", "blood_pressure":
+				bleBridge.Measurement(payload)
+			case "alcohol":
+				fcBridge.Alcohol(payload)
+			default:
+				log.Printf("hub: 未知の measurement kind: %q", kind)
+			}
+		},
+		BleStatus:   bleBridge.SetDeviceState,
+		Fc1200Event: fcBridge.Event,
+	})
+	listen := func(name string, srv interface{ ListenAndServe(string) error }, addr string) {
+		go func() {
+			if err := srv.ListenAndServe(addr); err != nil {
+				log.Printf("%s: listen: %v (本物のブリッジ稼働中ならそちらを使う)", name, err)
+			}
+		}()
+	}
+	listen("nfc-bridge", nfcBridge, nfcBridgeAddr)
+	listen("ble-bridge", bleBridge, bleBridgeAddr)
+	listen("fc1200-bridge", fcBridge, fc1200BridgeAddr)
+	listen("hub", hubServer, hubAddr)
+
 	mux := http.NewServeMux()
 	mux.Handle("/api/whep", streamServer)
 	mux.HandleFunc("/api/stream/status", streamServer.Status)
 	mux.HandleFunc("/debug", stream.DebugPage)
 	mux.Handle("/api/ptz", ptzCtl)
+	mux.HandleFunc("/api/hub/status", hubServer.Status)
+	// テスト用の読取注入 (CoreS3 firmware 未実装でも E2E 確認できる)
+	mux.HandleFunc("/api/nfc/read", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST のみ", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			CardID string `json:"card_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.CardID == "" {
+			http.Error(w, `{"card_id":"..."} が必要です`, http.StatusBadRequest)
+			return
+		}
+		nfcBridge.InjectRead(body.CardID)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	// テスト用: CoreS3 からのメッセージ受信を装う (measurement / ble_status 等)
+	mux.HandleFunc("/api/hub/inject", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST のみ", http.StatusMethodNotAllowed)
+			return
+		}
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64*1024))
+		if err != nil || len(data) == 0 {
+			http.Error(w, "CoreS3 メッセージの JSON が必要です", http.StatusBadRequest)
+			return
+		}
+		hubServer.Inject(data)
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	go func() {
 		// 点呼UI (https://alc.ippoan.org 等) からローカル API を呼べるよう

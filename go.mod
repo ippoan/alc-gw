@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/AlexxIT/go2rtc v1.9.14
 	github.com/energye/systray v1.0.3
+	github.com/gorilla/websocket v1.5.3
 	github.com/pion/webrtc/v4 v4.2.3
 	github.com/wailsapp/wails/v2 v2.13.0
 )
@@ -15,7 +16,6 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/labstack/echo/v4 v4.13.3 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect

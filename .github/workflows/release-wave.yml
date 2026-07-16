@@ -1,0 +1,24 @@
+name: Release Wave
+
+# Release Wave 機構の caller (ippoan/ci-workflows#179、platform: github-release)。
+# ci-dashboard /release-wave の Flip で `release-wave-flip` dispatch を受け、
+# release-wave-handler が staged Release (make_latest=false、release.yml が作成)
+# を latest に昇格する → インストール済み GW の自動更新が新版を取り込む。
+#
+# Repo config: ippoan/ci-workflows/config/release-wave-targets.yaml の
+#              `ippoan/alc-gw` entry
+
+on:
+  repository_dispatch:
+    types:
+      - release-wave-flip
+
+permissions:
+  contents: write     # gh release edit (latest 昇格)
+  id-token: write     # reusable の permissions check 用 (本 repo では未使用)
+  packages: read      # 同上 (npm_scope 未使用)
+
+jobs:
+  handler:
+    uses: ippoan/ci-workflows/.github/workflows/release-wave-handler.yml@main
+    secrets: inherit

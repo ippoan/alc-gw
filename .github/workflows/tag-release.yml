@@ -1,0 +1,28 @@
+name: Tag Release
+
+# semver tag の採番 + push を 1 クリックで行う (ippoan/ci-workflows の共有
+# workflow)。tag push で release.yml が連鎖発火し、NSIS インストーラを
+# ビルドして GitHub Release に添付する。インストール済みの GW は自動更新
+# (internal/update) が Releases latest を見て新版を取り込む。
+#
+# 実行: Actions タブ → Tag Release → Run workflow (bump は通常 patch)
+#       または `gh workflow run tag-release.yml`
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ippoan/ci-workflows/.github/workflows/tag-release.yml@main
+    with:
+      bump: ${{ inputs.bump }}
+    secrets: inherit
