@@ -32,6 +32,11 @@ Unicode true
 ####
 ## Include the wails tools
 ####
+# per-user インストール (UAC 不要)。自動更新が /S でサイレント適用される
+# 前提なので、管理者昇格が要る per-machine にはしないこと
+!define REQUEST_EXECUTION_LEVEL "user"
+!define WAILS_INSTALL_SCOPE "user"
+
 !include "wails_tools.nsh"
 
 # The version information for this two must consist of 4 parts
@@ -55,6 +60,9 @@ ManifestDPIAware true
 # !define MUI_WELCOMEFINISHPAGE_BITMAP "resources\leftimage.bmp" #Include this to add a bitmap on the left side of the Welcome Page. Must be a size of 164x314
 !define MUI_FINISHPAGE_NOAUTOCLOSE # Wait on the INSTFILES page so the user can take a look into the details of the installation steps
 !define MUI_ABORTWARNING # This will warn the user if they exit from the installer.
+
+# インストール完了ページに「今すぐ起動」チェックボックス
+!define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
 !insertmacro MUI_PAGE_WELCOME # Welcome to the installer page.
 # !insertmacro MUI_PAGE_LICENSE "resources\eula.txt" # Adds a EULA page to the installer
@@ -102,6 +110,9 @@ Section
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols
 
+    # ログイン時の自動起動 (常駐アプリ)
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${INFO_PRODUCTNAME}" '"$INSTDIR\${PRODUCT_EXECUTABLE}"'
+
     !insertmacro wails.writeUninstaller
 SectionEnd
 
@@ -114,6 +125,9 @@ Section "uninstall"
 
     Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
     Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk"
+
+    # スタートアップ登録の解除
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${INFO_PRODUCTNAME}"
 
     !insertmacro wails.unassociateFiles
     !insertmacro wails.unassociateCustomProtocols
