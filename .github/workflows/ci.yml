@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+# auto-merge reusable (App token で merge + PR write) に必要
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   test:
     runs-on: windows-latest
@@ -22,3 +27,12 @@ jobs:
 
       - name: Vet
         run: go vet ./internal/...
+
+  # CI green で自動マージ (ippoan 標準の reusable、alc-app-s3 と同構成)。
+  # release.yml は tag push 駆動の別 workflow なので deploy gate 対象外。
+  auto-merge:
+    name: Auto Merge
+    needs: [test]
+    if: github.event_name == 'pull_request'
+    uses: ippoan/ci-workflows/.github/workflows/auto-merge.yml@main
+    secrets: inherit
