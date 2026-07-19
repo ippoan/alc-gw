@@ -12,11 +12,13 @@ import (
 type Config struct {
 	RTSPURL string `json:"rtsp_url"` // ローカル表示用 (stream1)
 
-	// 遠隔点呼: C212 の全景を WHIP で SFU へ常時 publish する設定
-	// (alc-gw#6, docs/whip-convention.md)。WHIPURL が空なら publish 無効
-	// (既存動作のまま、後方互換)。
+	// 遠隔点呼: C212 の全景をカメラ中継シグナリングDO経由でP2P配信する設定
+	// (alc-gw#6, docs/camera-relay-convention.md)。WHIPURL が空なら中継無効
+	// (既存動作のまま、後方互換)。フィールド名は歴史的経緯 (WHIP時代) の
+	// ままだが、中身は WHIP endpoint ではなく signaling room の
+	// WebSocket URL (ippoan/alc-app#129)。
 	WHIPRTSPURL string `json:"whip_rtsp_url"` // 転送用 (stream2, 360p)
-	WHIPURL     string `json:"whip_url"`      // https://<sfu>/ingest/<拠点ID>
+	WHIPURL     string `json:"whip_url"`      // wss://<signaling>/cam-room/<拠点ID>
 	WHIPToken   string `json:"whip_token"`    // 拠点トークン (Bearer)
 }
 
