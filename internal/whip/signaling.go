@@ -5,9 +5,9 @@
 // 当初は WHIP (RFC 9725, HTTP POST/DELETE) + クラウド SFU 方式だったが、
 // 同時複数視聴が不要なこと・DO ベースのシグナリング資産が既にあることから、
 // 「device 役が signaling room へ常時接続し、admin 役が現れた時だけ
-// SDP/ICE を交換して P2P を開通させる」方式に転換した (docs/whip-convention.md
-// は廃止予定、ippoan/alc-app#129 参照)。P4 ファーム (esp_peer) 版の
-// 一次リファレンスという位置付けは変わらない。
+// SDP/ICE を交換して P2P を開通させる」方式に転換した
+// (docs/camera-relay-convention.md、ippoan/alc-app#129 参照)。P4 ファーム
+// (esp_peer) 版の一次リファレンスという位置付けは変わらない。
 package whip
 
 import (
