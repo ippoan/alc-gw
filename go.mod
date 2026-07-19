@@ -6,6 +6,7 @@ require (
 	github.com/AlexxIT/go2rtc v1.9.14
 	github.com/energye/systray v1.0.3
 	github.com/gorilla/websocket v1.5.3
+	github.com/pion/rtp v1.10.0
 	github.com/pion/webrtc/v4 v4.2.3
 	github.com/wailsapp/wails/v2 v2.13.0
 )
@@ -33,7 +34,6 @@ require (
 	github.com/pion/mdns/v2 v2.1.0 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.16 // indirect
-	github.com/pion/rtp v1.10.0 // indirect
 	github.com/pion/sctp v1.9.2 // indirect
 	github.com/pion/sdp/v3 v3.0.17 // indirect
 	github.com/pion/srtp/v3 v3.0.10 // indirect
