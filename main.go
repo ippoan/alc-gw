@@ -29,6 +29,7 @@ import (
 	"alc-gw/internal/ptz"
 	"alc-gw/internal/stream"
 	"alc-gw/internal/update"
+	"alc-gw/internal/whip"
 )
 
 //go:embed all:frontend/dist
@@ -46,9 +47,16 @@ var version = "dev"
 // トレイの「終了」も自動更新後の再起動も握り潰される。
 var quitting atomic.Bool
 
+// whipSession は遠隔点呼用の WHIP publish (alc-gw#6)。quitApp からの
+// graceful shutdown (SFU への DELETE 送出) 用に main() で設定される
+var whipSession *whip.Session
+
 // quitApp はトレイ掃除 → 本終了。OnBeforeClose の最小化ガードを quitting で抜ける
 func quitApp(ctx context.Context) {
 	quitting.Store(true)
+	if whipSession != nil {
+		whipSession.Stop() // SFU 側セッションを DELETE で片付けてから終了
+	}
 	systray.Quit()
 	runtime.Quit(ctx)
 }
@@ -95,6 +103,11 @@ func main() {
 	// AssetServer の Handler に載せることで WebView と同一オリジンになる。
 	streamServer := stream.NewServer(cfg.RTSPURL)
 	ptzCtl := ptz.FromRTSP(cfg.RTSPURL)
+
+	// 遠隔点呼: C212 (stream2) の全景を WHIP で SFU へ常時 publish
+	// (alc-gw#6)。whip_url 未設定なら Start は何もしない (機能無効、後方互換)。
+	whipSession = whip.NewSession()
+	whipSession.Start(whip.Config{RTSPURL: cfg.WHIPRTSPURL, WHIPURL: cfg.WHIPURL, Token: cfg.WHIPToken})
 
 	// CoreS3 の NFC 読取・体温・血圧・FC-1200 を、点呼UI が話せる
 	// タブレット時代のブリッジ互換 WS (9876/9877/9878) へ中継する。
@@ -145,6 +158,10 @@ func main() {
 	mux.HandleFunc("/debug", stream.DebugPage)
 	mux.Handle("/api/ptz", ptzCtl)
 	mux.HandleFunc("/api/hub/status", hubServer.Status)
+	mux.HandleFunc("/api/whip/status", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(whipSession.Status())
+	})
 	// テスト用の読取注入 (CoreS3 firmware 未実装でも E2E 確認できる)
 	mux.HandleFunc("/api/nfc/read", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -185,7 +202,7 @@ func main() {
 		}
 	}()
 
-	app := NewApp(streamServer, ptzCtl)
+	app := NewApp(streamServer, ptzCtl, whipSession)
 
 	err := wails.Run(&options.App{
 		Title:  "alc-gw",
@@ -273,6 +290,7 @@ func trayReady(ctx context.Context, app *App) func() {
 				cfg = config.Load()
 				app.stream.SetSource(cfg.RTSPURL)
 				app.ptz.SetSource(cfg.RTSPURL)
+				app.whip.Start(whip.Config{RTSPURL: cfg.WHIPRTSPURL, WHIPURL: cfg.WHIPURL, Token: cfg.WHIPToken})
 				log.Printf("config: reloaded after edit")
 			}()
 		})

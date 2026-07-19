@@ -8,6 +8,7 @@ import (
 	"alc-gw/internal/ptz"
 	"alc-gw/internal/stream"
 	"alc-gw/internal/update"
+	"alc-gw/internal/whip"
 )
 
 // App struct
@@ -16,11 +17,12 @@ type App struct {
 
 	stream *stream.Server
 	ptz    *ptz.Controller
+	whip   *whip.Session
 }
 
 // NewApp creates a new App application struct
-func NewApp(streamServer *stream.Server, ptzCtl *ptz.Controller) *App {
-	return &App{stream: streamServer, ptz: ptzCtl}
+func NewApp(streamServer *stream.Server, ptzCtl *ptz.Controller, whipSession *whip.Session) *App {
+	return &App{stream: streamServer, ptz: ptzCtl, whip: whipSession}
 }
 
 // startup is called when the app starts. The context is saved
@@ -43,12 +45,18 @@ func (a *App) GetSettings() Settings {
 }
 
 // SaveSettings は設定を保存し、即座にカメラ接続へ反映する。
+// WHIP 関連フィールドは config.json 手書き専用 (SettingsDialog は RTSPURL の
+// み扱う) なので、既存設定を読み直してから RTSPURL だけ上書きする
+// — でないと WHIP 設定がここで消える。
 func (a *App) SaveSettings(rtspURL string) error {
-	if err := config.Save(config.Config{RTSPURL: rtspURL}); err != nil {
+	cfg := config.Load()
+	cfg.RTSPURL = rtspURL
+	if err := config.Save(cfg); err != nil {
 		return err
 	}
 	a.stream.SetSource(rtspURL)
 	a.ptz.SetSource(rtspURL)
+	a.whip.Start(whip.Config{RTSPURL: cfg.WHIPRTSPURL, WHIPURL: cfg.WHIPURL, Token: cfg.WHIPToken})
 	log.Printf("config: rtsp source updated")
 	return nil
 }
